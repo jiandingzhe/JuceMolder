@@ -64,9 +64,11 @@ sub proc_one_file
             die "duplicate praga once for file $f_in" if defined $guard_macro;
             $guard_macro = write_guard_macro($fh_out, $f_in_display);
         }
-        elsif (/^\s*#\s*include\s+(?:<|")(.+)(?:>|")/)
+        elsif (/(^\s*#\s*include\s+(?:<|")(.+)(?:>|")\s*)(.*)/)
         {
-            my $inc_file = $1;
+            my $text_before_after_inc = $1;
+            my $inc_file = $2;
+            my $text_after_inc = $3;
             my $inc_file_full = catfile $fdir_in, $inc_file; 
             if (-f $inc_file_full and !(defined $main_header and abs_path($inc_file_full) eq abs_path($main_header)))
             {
@@ -77,6 +79,7 @@ sub proc_one_file
                     proc_one_file($fh_out, $inc_file_full, $inc_file);
                     say $fh_out "//-------- end $inc_file --------";
                 }
+                say $fh_out ' ' x length($text_before_after_inc), $text_after_inc;
             }
             else
             {
