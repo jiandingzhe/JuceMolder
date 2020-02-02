@@ -49,6 +49,7 @@ sub proc_one_file
     
     while (<$fh_in>)
     {
+        s/\r\n/\n/;
         if (/^\s*#\s*pragma\s+once/)
         {
             die "duplicate praga once for file $f_in" if defined $guard_macro;
