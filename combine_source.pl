@@ -16,11 +16,20 @@ $file_in = abs_path($file_in);
 
 open my $fh_out, '>', $file_out or die "failed to open $file_out; $!";
 
-print $fh_out <<HEREDOC;
+my $main_header;
+if ($file_in =~ /(\.h|\.hpp)$/)
+{
+    print $fh_out <<HEREDOC;
 #pragma once
 #include "AppConfig.h"
 
 HEREDOC
+}
+else
+{
+    $main_header = $file_in;
+    $main_header =~ s/(\.cpp|\.cxx|\.c\+\+)$/.h/;
+}
 
 proc_one_file($fh_out, $file_in, basename($file_in));
 
@@ -34,8 +43,8 @@ sub write_guard_macro
     return $macro_name;
 }
 
-my %processed_files;
 my $indent = 0;
+my %processed_files;
 sub proc_one_file
 {
     my ($fh_out, $f_in, $f_in_display) = @_;
@@ -59,7 +68,7 @@ sub proc_one_file
         {
             my $inc_file = $1;
             my $inc_file_full = catfile $fdir_in, $inc_file; 
-            if (-f $inc_file_full)
+            if (-f $inc_file_full and !(defined $main_header and abs_path($inc_file_full) eq abs_path($main_header)))
             {
                 if (!exists $processed_files{$inc_file_full})
                 {
