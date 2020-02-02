@@ -161,6 +161,7 @@ write_modules_dep($fh_cmake);
 #
 add_library($juce_lib_name INTERFACE)
 target_link_libraries($juce_lib_name INTERFACE $module_libs)
+set_target_properties($juce_lib_name PROPERTIES FOLDER JUCE${ver_major})
 
 HEREDOC
 }
@@ -287,6 +288,7 @@ if(APPLE)
 else()
     add_library(${module_lib} STATIC $source_line_non_apple)
 endif()
+set_target_properties(${module_lib} PROPERTIES FOLDER JUCE${ver_major})
 target_include_directories($module_lib PUBLIC \$\{CMAKE_CURRENT_SOURCE_DIR\} \$\{CMAKE_CURRENT_BINARY_DIR\})
 
 HEREDOC
