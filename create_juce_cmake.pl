@@ -55,6 +55,7 @@ closedir $dh_in_modules;
 # parse module properties
 my $ver_str;
 my %config_opts; # key => default value
+my %config_docs; # key => help doc
 my %priv_inc_dirs; # {dirs}
 my %osx_fwks; # {frameworks}
 my %ios_fwks; # {frameworks}
@@ -148,8 +149,18 @@ foreach my $module (@modules)
 # generate config header
 foreach my $config_key (sort keys %config_opts)
 {
+    my $doc_lines = $config_docs{$config_key};
+    foreach (@$doc_lines)
+    {
+        s/\\/\\\\/g;
+        s/"/\\"/g;
+        s/{/\\{/g;
+        s/}/\\}/g;
+        s/\$/\\\$/g;
+    }
+    my $doc = join '\n', @$doc_lines;
     print $fh_cmake <<HEREDOC;
-set($config_key "$config_opts{$config_key}" CACHE BOOL "")
+set($config_key "$config_opts{$config_key}" CACHE BOOL "$doc")
 HEREDOC
 }
 
@@ -238,38 +249,130 @@ sub read_module_prop
     my $in_decl = 0;
     my $curr_config;
     my $curr_config_macro_start;
+    my @curr_config_help;
+
+    my $block_comment = 0;
 
     # parse lines
-    while (<$fh>)
+    while (my $line = <$fh>)
     {
-        if (!$in_decl)
+        # determine begin of comment
+        my $block_comment_end = 0;
+        my $cont_comment_text;
+        if ($block_comment)
         {
-            if (/BEGIN_JUCE_MODULE_DECLARATION/)
-            {
-                $in_decl = 1;
+            $line =~ s/^\s+//;
+            $line =~ s/\s+$//;
+            if ($line =~ m{(.*)\s*\*+/$}) {
+                #say "end block comment:\n    $line";
+                $cont_comment_text = $1;
+                $block_comment_end = 1;
             }
-            elsif (/Config:\s*(\w+)/)
+            else
             {
-                $curr_config = $1;
+                #say "    block comment:\n         $line";
+                $cont_comment_text = $line;
             }
-            elsif (/^\s*#\s*ifndef\s+(\w+)/)
+        }
+        else
+        {
+            my $line_trim = $line;
+            $line_trim =~ s/^\s+//;
+            $line_trim =~ s/\s+$//;
+            if ($line_trim =~ m{^/\*+\s*(.*)})
+            {
+                #say "begin block comment:\n    $line_trim";
+                $block_comment = 1;
+                $cont_comment_text = $1;
+            }
+            elsif ($line_trim =~ m{^//\s*(.*)})
+            {
+                #say "single comment:\n    $line_trim";
+                $cont_comment_text = $1;
+            }
+        }
+        
+
+        # process comment part
+        if (defined $cont_comment_text)
+        {
+            if ($in_decl)
+            {
+                if ($cont_comment_text =~ /:/)
+                {
+                    my ($key, @items) = parse_decl_line($cont_comment_text);
+                    $key = lc $key;
+                    next if @items == 0;
+                    
+                    if ($key eq 'version' and $module eq 'juce_core')
+                    {
+                        $ver_str = $items[0];
+                    }
+                    elsif ($key eq 'id')
+                    {
+                        die "conflict module name: $module from path, $items[0] from decl\n$_"
+                        if $module ne $items[0];
+                    }
+                    elsif ($key eq 'searchpaths')   { $priv_inc_dirs{$_} = undef foreach @items }
+                    elsif ($key eq 'osxframeworks') { $osx_fwks{$_}      = undef foreach @items }
+                    elsif ($key eq 'iosframeworks') { $ios_fwks{$_}      = undef foreach @items }
+                    elsif ($key eq 'linuxpackages') { $linux_pkgs{$_}    = undef foreach @items }
+                    elsif ($key eq 'linuxlibs')     { $linux_libs{$_}    = undef foreach @items }
+                    elsif ($key eq 'mingwlibs')     { $mingw_libs{$_}    = undef foreach @items }
+                    elsif ($key eq 'osxlibs')       { $osx_libs{$_}      = undef foreach @items }
+                    elsif ($key eq 'ioslibs')       { $ios_libs{$_}      = undef foreach @items }
+                    elsif ($key eq 'windowslibs')   { $win_libs{$_}      = undef foreach @items }
+                }
+                elsif ($cont_comment_text =~ /END_JUCE_MODULE_DECLARATION/)
+                {
+                    $in_decl = 0;
+                }
+            }
+            else
+            {
+                if ($cont_comment_text =~ /BEGIN_JUCE_MODULE_DECLARATION/)
+                {
+                    $in_decl = 1;
+                }
+                elsif ($cont_comment_text =~ /Config:\s*(\w+)/)
+                {
+                    $curr_config = $1;
+                }
+                else
+                {
+                    if (defined $curr_config)
+                    {
+                        push @curr_config_help, $cont_comment_text if length($cont_comment_text) > 0;
+                    }
+                }
+
+            }
+        }
+        # process non-comment part
+        else
+        {
+            die "outside continuous-comment, but still in JUCE_MODULE_DECLARATION:\n$line" if $in_decl;
+            
+            if ($line =~ /^\s*#\s*ifndef\s+(\w+)/)
             {
                 if (defined $curr_config)
                 {
                     die "conflicting config name: <$curr_config> via comment title, <$1> via #ifndef for file $f_header"
-                      if $curr_config ne $1;
+                    if $curr_config ne $1;
                     $curr_config_macro_start = 1;
                 }
             }
-            elsif (/^\s*#\s*define\s+(\w+)\s+(\w+)/)
+            elsif ($line =~ /^\s*#\s*define\s+(\w+)\s+(\w+)/)
             {
                 if ($curr_config_macro_start)
                 {
                     if ($curr_config eq $1)
                     {
                         $config_opts{$curr_config} = $2;
+                        $config_docs{$curr_config} = [@curr_config_help];
                         $curr_config_macro_start = 0;
                         $curr_config = undef;
+                        @curr_config_help = ();
                     }
                     else
                     {
@@ -277,38 +380,12 @@ sub read_module_prop
                     }
                 }
             }
+            
         }
-        else
+
+        if ($block_comment_end)
         {
-            if (/:/)
-            {
-                my ($key, @items) = parse_decl_line($_);
-                $key = lc $key;
-                next if @items == 0;
-                
-                if ($key eq 'version' and $module eq 'juce_core')
-                {
-                    $ver_str = $items[0];
-                }
-                elsif ($key eq 'id')
-                {
-                    die "conflict module name: $module from path, $items[0] from decl\n$_"
-                      if $module ne $items[0];
-                }
-                elsif ($key eq 'searchpaths')   { $priv_inc_dirs{$_} = undef foreach @items }
-                elsif ($key eq 'osxframeworks') { $osx_fwks{$_}      = undef foreach @items }
-                elsif ($key eq 'iosframeworks') { $ios_fwks{$_}      = undef foreach @items }
-                elsif ($key eq 'linuxpackages') { $linux_pkgs{$_}    = undef foreach @items }
-                elsif ($key eq 'linuxlibs')     { $linux_libs{$_}    = undef foreach @items }
-                elsif ($key eq 'mingwlibs')     { $mingw_libs{$_}    = undef foreach @items }
-                elsif ($key eq 'osxlibs')       { $osx_libs{$_}      = undef foreach @items }
-                elsif ($key eq 'ioslibs')       { $ios_libs{$_}      = undef foreach @items }
-                elsif ($key eq 'windowslibs')   { $win_libs{$_}      = undef foreach @items }
-            }
-            elsif (/END_JUCE_MODULE_DECLARATION/)
-            {
-                $in_decl = 0;
-            }
+            $block_comment = 0;
         }
     }
     close $fh;
