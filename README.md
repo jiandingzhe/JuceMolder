@@ -5,7 +5,7 @@ mold JUCE source files into one
 
 To mold one JUCE header/source file:
 ```
-perl combine_source.pl path_to_juce/modules/juce_core/juce_core.cpp molded_output/juce_core.cpp
+perl combine_source.pl -in path_to_juce/modules/juce_core/juce_core.cpp -out molded_output/juce_core.cpp
 ```
 
 To convert whole JUCE into CMake-managed project:

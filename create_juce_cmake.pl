@@ -17,6 +17,7 @@ my $d_in_modules;
 my $d_out;
 
 my $combine_script = catfile $FindBin::RealBin, 'combine_source.pl';
+my @plugin_source_paths = qw[juce_audio_plugin_client juce_audio_processors/format_types];
 
 GetOptions(
     'modules=s' => \$d_in_modules,
@@ -99,7 +100,10 @@ foreach my $module (@modules)
     my $master_hdr_in  = catfile $d_in_module, "$module.h";
     my $master_hdr_out = catfile $d_out_module, "$module.h";
 
-    system($^X, $combine_script, $master_hdr_in, $master_hdr_out) == 0
+    system($^X, $combine_script,
+        '-in', $master_hdr_in,
+        '-out', $master_hdr_out,
+        '-skip', @plugin_source_paths) == 0
       or die "combining master header failed for module $module";
 
     my $master_src_in;
@@ -117,7 +121,11 @@ foreach my $module (@modules)
     if (defined $master_src_in)
     {
         $master_src_out = catfile $d_out_module, "$module.cpp";
-        system($^X, $combine_script, $master_src_in, $master_src_out) == 0 or die "combining master source failed for module $module";
+        system($^X, $combine_script,
+            '-in', $master_src_in,
+            '-out', $master_src_out,
+            '-skip', @plugin_source_paths) == 0
+          or die "combining master source failed for module $module";
     }
 
     # copy objective-c++ source file
@@ -278,6 +286,7 @@ sub write_module_cmake
     my $module_lib = module_lib_name($module);
     my $source_line_apple = join ' ', @$sources_common, @$sources_apple;
     my $source_line_non_apple = join ' ', @$sources_common, @$sources_non_apple;
+    my $avail_flags = join "\n    ", map {"JUCE_MODULE_AVAILABLE_$_"} @modules;
     print $fh <<HEREDOC;
 #
 # module $module
@@ -291,7 +300,12 @@ set_target_properties(${module_lib} PROPERTIES
     FOLDER JUCE${ver_major}
     POSITION_INDEPENDENT_CODE 1)
 target_compile_features(${module_lib} PUBLIC cxx_std_14)
+target_compile_definitions(${module_lib} PUBLIC
+    $avail_flags)
 target_include_directories($module_lib PUBLIC \$\{CMAKE_CURRENT_SOURCE_DIR\} \$\{CMAKE_CURRENT_BINARY_DIR\})
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "armv7-a")
+    target_compile_options($module_lib PUBLIC -mfpu=neon)
+endif()
 
 HEREDOC
     # options

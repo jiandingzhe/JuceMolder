@@ -5,15 +5,30 @@ use feature qw/say/;
 use Cwd qw/abs_path/;
 use File::Glob qw/bsd_glob/;
 use File::Basename;
-use File::Spec::Functions;
+use File::Spec::Functions qw/catfile catdir abs2rel/;
 use File::Path;
+use Getopt::Long;
 
-my $file_in = shift;
-my $file_out = shift;
+my $file_in;
+my $file_out;
+my @skip_paths;
+GetOptions(
+    'in=s' => \$file_in,
+    'out=s' => \$file_out,
+    'skip=s{,}' => \@skip_paths,
+    'help' => \&show_help_and_exit
+);
 
+# validate and preprocess options
+die "input file not specified" if !defined $file_in;
 die "input file $file_in not exist" if !-f $file_in;
-$file_in = abs_path($file_in);
+die "output file not specified" if !defined $file_out;
 
+$file_in = abs_path($file_in);
+s/\\/\//g foreach @skip_paths;
+my $in_root = dirname $file_in;
+
+# do process
 open my $fh_out, '>', $file_out or die "failed to open $file_out; $!";
 
 my $main_header;
@@ -33,6 +48,11 @@ else
 
 proc_one_file($fh_out, $file_in, basename($file_in));
 
+close $fh_out;
+
+#
+# subs
+#
 sub write_guard_macro
 {
     my ($fh_out, $fname) = @_;
@@ -69,10 +89,11 @@ sub proc_one_file
             my $text_before_after_inc = $1;
             my $inc_file = $2;
             my $text_after_inc = $3;
-            my $inc_file_full = catfile $fdir_in, $inc_file; 
+            my $inc_file_full = catfile $fdir_in, $inc_file;
+            my $inc_file_in_root = abs2rel $inc_file_full, $in_root;
             if (-f $inc_file_full and !(defined $main_header and abs_path($inc_file_full) eq abs_path($main_header)))
             {
-                if (!exists $processed_files{$inc_file_full})
+                if (!exists $processed_files{$inc_file_full} and !file_in_skip_list($inc_file_in_root))
                 {
                     say $fh_out "//-------- begin $inc_file --------";
                     say ((' 'x$indent) . "read included $inc_file by $f_in_display");
@@ -98,4 +119,24 @@ sub proc_one_file
     $indent -= 2;
 }
 
-close $fh_out;
+sub file_in_skip_list
+{
+    my $file = shift;
+    foreach my $skip_pattern (@skip_paths)
+    {
+        return 1 if ($file =~ /$skip_pattern/)
+    }
+    return 0;
+}
+
+sub show_help_and_exit
+{
+    print <<HELPDOC;
+Command-Line Options:
+-in FILE    Input file.
+-out FILE   Output file.
+-skip PATTERN1 PATTERN2 ...
+            File names matching any of these patterns will be ignored.
+HELPDOC
+    exit;
+}
