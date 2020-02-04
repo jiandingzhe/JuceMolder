@@ -54,17 +54,16 @@ closedir $dh_in_modules;
 
 # parse module properties
 my $ver_str;
-my %dep_modules; # module => [modules]
-my %config_opts; # module => key => default value
-my %priv_inc_dirs; # module => [dirs]
-my %osx_fwks; # module => [frameworks]
-my %ios_fwks; # module => [frameworks]
-my %linux_pkgs; # module => [pkgconfig names]
-my %linux_libs; # module => [libs]
-my %mingw_libs; # module => [libs]
-my %osx_libs; # module => [libs]
-my %ios_libs; # module => [libs]
-my %win_libs; # module => [libs]
+my %config_opts; # key => default value
+my %priv_inc_dirs; # {dirs}
+my %osx_fwks; # {frameworks}
+my %ios_fwks; # {frameworks}
+my %linux_pkgs; # {pkgconfig names}
+my %linux_libs; # {libs}
+my %mingw_libs; # {libs}
+my %osx_libs; # {libs}
+my %ios_libs; # {libs}
+my %win_libs; # {libs}
 
 foreach my $module (@modules)
 {
@@ -74,10 +73,7 @@ foreach my $module (@modules)
 die "JUCE version is not obtained after parsing module header files" if !defined $ver_str;
 my ($ver_major, $ver_minor, $ver_patch) = split /\./, $ver_str;
 
-#
 # create output project
-#
-
 mkpath $d_out if !-d $d_out;
 my $f_cmake = catfile $d_out, 'CMakeLists.txt';
 open my $fh_cmake, '>', $f_cmake or die "failed to create CMake file $f_cmake: $!";
@@ -88,6 +84,11 @@ include_guard(GLOBAL)
 project(JUCE${ver_major})
 
 HEREDOC
+
+# merge source files for each module
+my @common_src;
+my @apple_src;
+my @non_apple_src;
 
 foreach my $module (@modules)
 {
@@ -129,9 +130,7 @@ foreach my $module (@modules)
     }
 
     # copy objective-c++ source file
-    my @common_src = (abs2rel($master_hdr_out, $d_out));
-    my @apple_src;
-    my @non_apple_src;
+    push @common_src, abs2rel($master_hdr_out, $d_out);
     my $master_mm_in = catfile $d_in_module, "$module.mm";
     if (-f $master_mm_in)
     {
@@ -144,34 +143,84 @@ foreach my $module (@modules)
     {
         push @common_src, abs2rel($master_src_out, $d_out) if defined $master_src_out;
     }
-
-    # write CMake script
-    write_module_cmake($fh_cmake, $module, \@common_src, \@apple_src, \@non_apple_src);
 }
 
 # generate config header
+foreach my $config_key (sort keys %config_opts)
+{
+    print $fh_cmake <<HEREDOC;
+set($config_key "$config_opts{$config_key}" CACHE BOOL "")
+HEREDOC
+}
+
 print $fh_cmake <<HEREDOC;
 configure_file(AppConfig.h.in AppConfig.h)
+
 HEREDOC
 
 write_config_header_template();
 
-# write dependencies
-write_modules_dep($fh_cmake);
+# create library
+my $juce_lib = "juce$ver_major";
 
-# create master library
-{
-    my $juce_lib_name = "juce$ver_major";
-    my $module_libs = join ' ', map {module_lib_name($_)} @modules;
-    print $fh_cmake <<HEREDOC;
-#
-# master library to use all JUCE modules at once
-#
-add_library($juce_lib_name INTERFACE)
-target_link_libraries($juce_lib_name INTERFACE $module_libs)
+my $avail_flags = join "\n    ", map {"JUCE_MODULE_AVAILABLE_$_"} @modules;
+my $source_line_common = join "\n    ", @common_src;
+my $source_line_apple = join "\n        ", @apple_src;
+my $source_line_non_apple = join "\n        ", @non_apple_src;
+print $fh_cmake <<HEREDOC;
+set(juce_sources
+    $source_line_common)
+
+if(APPLE)
+    list(APPEND juce_sources
+        $source_line_apple)
+else()
+    list(APPEND juce_sources
+        $source_line_non_apple)
+endif()
+
+add_library($juce_lib STATIC \$\{juce_sources\})
+
+set_target_properties(${juce_lib} PROPERTIES
+    FOLDER JUCE${ver_major}
+    POSITION_INDEPENDENT_CODE 1)
+
+target_compile_features(${juce_lib} PUBLIC cxx_std_14)
+
+target_compile_definitions(${juce_lib} PUBLIC
+    $avail_flags)
+
+target_include_directories($juce_lib PUBLIC
+    \$\{CMAKE_CURRENT_SOURCE_DIR\}
+    \$\{CMAKE_CURRENT_BINARY_DIR\})
+
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "armv7-a")
+    target_compile_options($juce_lib PUBLIC -mfpu=neon)
+endif()
 
 HEREDOC
+
+# dependent libs
+write_ruled_frameworks($fh_cmake, $juce_lib, 'IOS', [sort keys %ios_fwks]);
+write_ruled_frameworks($fh_cmake, $juce_lib, 'APPLE AND NOT IOS', [sort keys %osx_fwks]);
+write_ruled_libs($fh_cmake, $juce_lib, 'IOS', [sort keys %ios_libs]);
+write_ruled_libs($fh_cmake, $juce_lib, 'APPLE AND NOT IOS', [sort keys %osx_libs]);
+write_ruled_libs($fh_cmake, $juce_lib, 'WIN32', [sort keys %win_libs]);
+write_ruled_libs($fh_cmake, $juce_lib, 'CMAKE_SYSTEM_NAME STREQUAL "Linux"', [sort keys %linux_libs]);
+write_ruled_pkgs($fh_cmake, $juce_lib, 'CMAKE_SYSTEM_NAME STREQUAL "Linux"', [sort keys %linux_pkgs]);
+write_ruled_pkgs($fh_cmake, $juce_lib, 'JUCE_WEB_BROWSER AND CMAKE_SYSTEM_NAME STREQUAL "Linux"', [qw/gtk+-3.0 webkit2gtk-4.0/]);
+
+if (%priv_inc_dirs > 0)
+{
+    my $inc_text = join "\n    ", sort keys %priv_inc_dirs;
+    print $fh_cmake <<HEREDOC;
+target_include_directories($juce_lib PRIVATE
+    $inc_text)
+HEREDOC
 }
+
+# finalize
+
 close $fh_cmake;
 
 #
@@ -218,7 +267,7 @@ sub read_module_prop
                 {
                     if ($curr_config eq $1)
                     {
-                        $config_opts{$module}{$curr_config} = $2;
+                        $config_opts{$curr_config} = $2;
                         $curr_config_macro_start = 0;
                         $curr_config = undef;
                     }
@@ -246,16 +295,15 @@ sub read_module_prop
                     die "conflict module name: $module from path, $items[0] from decl\n$_"
                       if $module ne $items[0];
                 }
-                elsif ($key eq 'dependencies')  { $dep_modules{$module}   = [@items] }
-                elsif ($key eq 'searchpaths')   { $priv_inc_dirs{$module} = [@items] }
-                elsif ($key eq 'osxframeworks') { $osx_fwks{$module}      = [@items] }
-                elsif ($key eq 'iosframeworks') { $ios_fwks{$module}      = [@items] }
-                elsif ($key eq 'linuxpackages') { $linux_pkgs{$module}    = [@items] }
-                elsif ($key eq 'linuxlibs')     { $linux_libs{$module}    = [@items] }
-                elsif ($key eq 'mingwlibs')     { $mingw_libs{$module}    = [@items] }
-                elsif ($key eq 'osxlibs')       { $osx_libs{$module}      = [@items] }
-                elsif ($key eq 'ioslibs')       { $ios_libs{$module}      = [@items] }
-                elsif ($key eq 'windowslibs')   { $win_libs{$module}      = [@items] }
+                elsif ($key eq 'searchpaths')   { $priv_inc_dirs{$_} = undef foreach @items }
+                elsif ($key eq 'osxframeworks') { $osx_fwks{$_}      = undef foreach @items }
+                elsif ($key eq 'iosframeworks') { $ios_fwks{$_}      = undef foreach @items }
+                elsif ($key eq 'linuxpackages') { $linux_pkgs{$_}    = undef foreach @items }
+                elsif ($key eq 'linuxlibs')     { $linux_libs{$_}    = undef foreach @items }
+                elsif ($key eq 'mingwlibs')     { $mingw_libs{$_}    = undef foreach @items }
+                elsif ($key eq 'osxlibs')       { $osx_libs{$_}      = undef foreach @items }
+                elsif ($key eq 'ioslibs')       { $ios_libs{$_}      = undef foreach @items }
+                elsif ($key eq 'windowslibs')   { $win_libs{$_}      = undef foreach @items }
             }
             elsif (/END_JUCE_MODULE_DECLARATION/)
             {
@@ -274,96 +322,6 @@ sub parse_decl_line
     my $values_str = $2;
     my @items = split /\s+/, $values_str;
     return $name, @items;
-}
-
-sub write_module_cmake
-{
-    my ($fh, $module, $sources_common, $sources_apple, $sources_non_apple) = @_;
-
-    s{\\}{/}g foreach @$sources_common, @$sources_apple, @$sources_non_apple;
-
-    # create library
-    my $module_lib = module_lib_name($module);
-    my $source_line_apple = join ' ', @$sources_common, @$sources_apple;
-    my $source_line_non_apple = join ' ', @$sources_common, @$sources_non_apple;
-    my $avail_flags = join "\n    ", map {"JUCE_MODULE_AVAILABLE_$_"} @modules;
-    print $fh <<HEREDOC;
-#
-# module $module
-#
-if(APPLE)
-    add_library(${module_lib} STATIC $source_line_apple)
-else()
-    add_library(${module_lib} STATIC $source_line_non_apple)
-endif()
-set_target_properties(${module_lib} PROPERTIES
-    FOLDER JUCE${ver_major}
-    POSITION_INDEPENDENT_CODE 1)
-target_compile_features(${module_lib} PUBLIC cxx_std_14)
-target_compile_definitions(${module_lib} PUBLIC
-    $avail_flags)
-target_include_directories($module_lib PUBLIC \$\{CMAKE_CURRENT_SOURCE_DIR\} \$\{CMAKE_CURRENT_BINARY_DIR\})
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "armv7-a")
-    target_compile_options($module_lib PUBLIC -mfpu=neon)
-endif()
-
-HEREDOC
-    # options
-    write_module_options($fh, $module);
-
-    # depend library
-    write_ruled_libs($fh, $module_lib, 'MSVC',  $win_libs{$module})
-      if exists $win_libs{$module};
-    write_ruled_libs($fh, $module_lib, 'MINGW', $mingw_libs{$module})
-      if exists $mingw_libs{$module};
-    write_ruled_libs($fh, $module_lib, 'IOS',   $ios_libs{$module})
-      if exists $ios_libs{$module};
-    write_ruled_libs($fh, $module_lib, 'APPLE AND NOT IOS', $osx_libs{$module})
-      if exists $osx_libs{$module};
-    write_ruled_libs($fh, $module_lib, 'CMAKE_SYSTEM_NAME STREQUAL "Linux"', $linux_libs{$module})
-      if exists $linux_libs{$module};
-    write_ruled_pkgs($fh, $module_lib, 'CMAKE_SYSTEM_NAME STREQUAL "Linux"', $linux_pkgs{$module})
-      if exists $linux_pkgs{$module};
-    write_ruled_frameworks($fh, $module_lib, 'IOS', $ios_fwks{$module})
-      if exists $ios_fwks{$module};
-    write_ruled_frameworks($fh, $module_lib, 'APPLE AND NOT IOS', $osx_fwks{$module})
-      if exists $osx_fwks{$module};
-    
-    # include directories
-    if (exists $priv_inc_dirs{$module})
-    {
-        my $inc_str = join ' ', @{$priv_inc_dirs{$module}};
-        print $fh <<HEREDOC;
-target_include_directories($module_lib PRIVATE $inc_str)
-HEREDOC
-    }
-
-    say $fh '';
-}
-
-sub module_lib_name
-{
-    my $module = shift;
-    my $module_sub_name = $module;
-    $module_sub_name =~ s/^juce_//i;
-    $module_sub_name =~ s/^juze_//i;
-    my $module_lib = "juce${ver_major}_$module_sub_name";
-    return $module_lib;
-}
-
-sub write_module_options
-{
-    my ($fh, $module) = @_;
-    return if !exists $config_opts{$module};
-
-    foreach my $opt (sort keys %{$config_opts{$module}})
-    {
-        my $default = $config_opts{$module}{$opt};
-        print $fh <<HEREDOC;
-set($opt $default CACHE BOOL "")
-HEREDOC
-    }
-    say $fh '';
 }
 
 sub write_ruled_libs
@@ -425,33 +383,6 @@ endif()
 HEREDOC
 }
 
-sub write_modules_dep
-{
-    my $fh = shift;
-
-    print $fh <<HEREDOC;
-#
-# module dependencies
-#
-HEREDOC
-
-    say "dependencies";
-
-    foreach my $module (@modules)
-    {
-        say "  $module";
-        my $module_lib = module_lib_name($module);
-        next if !exists $dep_modules{$module};
-        my $dep_str = join ' ', map {module_lib_name($_)} @{$dep_modules{$module}};
-        say "    $dep_str";
-        print $fh <<HEREDOC;
-target_link_libraries($module_lib $dep_str)
-HEREDOC
-    }
-
-    say $fh '';
-}
-
 sub write_config_header_template
 {
     my $f_hdr = catfile $d_out, 'AppConfig.h.in';
@@ -466,19 +397,13 @@ sub write_config_header_template
 
 HEREDOC
 
-    foreach my $module (sort keys %config_opts)
+    foreach my $config (sort keys %config_opts)
     {
         print $fh <<HEREDOC;
-// $module
-HEREDOC
-        foreach my $config (sort keys %{$config_opts{$module}})
-        {
-            print $fh <<HEREDOC;
 #cmakedefine01 $config
 HEREDOC
-        }
-        say $fh '';
     }
+    say $fh '';
     
     close $fh;
 }
