@@ -12,10 +12,13 @@ use Getopt::Long;
 my $file_in;
 my $file_out;
 my @skip_paths;
+my @extra_inc;
+
 GetOptions(
     'in=s' => \$file_in,
     'out=s' => \$file_out,
     'skip=s{,}' => \@skip_paths,
+    'extra-inc=s{,}' => \@extra_inc,
     'help' => \&show_help_and_exit
 );
 
@@ -36,7 +39,6 @@ if ($file_in =~ /(\.h|\.hpp)$/)
 {
     print $fh_out <<HEREDOC;
 #pragma once
-#include "AppConfig.h"
 
 HEREDOC
 }
@@ -44,6 +46,13 @@ else
 {
     $main_header = $file_in;
     $main_header =~ s/(\.cpp|\.cxx|\.c\+\+)$/.h/;
+}
+
+foreach (@extra_inc)
+{
+    print $fh_out <<HEREDOC;
+#include "$_"
+HEREDOC
 }
 
 proc_one_file($fh_out, $file_in, basename($file_in));
@@ -68,6 +77,7 @@ my %processed_files;
 sub proc_one_file
 {
     my ($fh_out, $f_in, $f_in_display) = @_;
+    $f_in = abs_path $f_in;
     $processed_files{$f_in} = undef;
     $indent += 2;
 
@@ -90,10 +100,23 @@ sub proc_one_file
             my $inc_file = $2;
             my $text_after_inc = $3;
             my $inc_file_full = catfile $fdir_in, $inc_file;
+            $inc_file_full = abs_path $inc_file_full;
             my $inc_file_in_root = abs2rel $inc_file_full, $in_root;
-            if (-f $inc_file_full and !(defined $main_header and abs_path($inc_file_full) eq abs_path($main_header)))
+
+            if (exists $processed_files{$inc_file_full})
             {
-                if (!exists $processed_files{$inc_file_full} and !file_in_skip_list($inc_file_in_root))
+            }
+            elsif (-f $inc_file_full and
+                !(defined $main_header and abs_path($inc_file_full) eq abs_path($main_header)))
+            {
+                if (file_in_skip_list($inc_file_in_root))
+                {
+                    say $fh_out "#include \"$inc_file_in_root\"";
+                    say ' ' x $indent, "convert skipped file $inc_file from\n",
+                        ' ' x $indent, "  $inc_file_full to\n",
+                        ' ' x $indent, "  $inc_file_in_root";
+                }
+                else
                 {
                     say $fh_out "//-------- begin $inc_file --------";
                     say ((' 'x$indent) . "read included $inc_file by $f_in_display");

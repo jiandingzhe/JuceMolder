@@ -138,6 +138,9 @@ function(juce^^ver_major^^_plugin jplug_name)
         set(impl_lib ${jplug_name}_impl)
         add_library(${impl_lib} STATIC ${jplug_SOURCES})
         target_link_libraries(${impl_lib} ${jplug_LINK_LIBRARIES} juce^^ver_major^^)
+        target_include_directories(${impl_lib} PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_BINARY_DIR})
     endif()
 
     # plugin
@@ -148,6 +151,10 @@ function(juce^^ver_major^^_plugin jplug_name)
     else()
         target_link_libraries(${plugin_target} ${jplug_LINK_LIBRARIES} juce^^ver_major^^)
     endif()
+
+    target_include_directories(${plugin_target} PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR})
 
     set_target_properties(${plugin_target} PROPERTIES
         OUTPUT_NAME ${jplug_name}
@@ -166,6 +173,10 @@ function(juce^^ver_major^^_plugin jplug_name)
     else()
         target_link_libraries(${app_target} ${jplug_LINK_LIBRARIES} juce^^ver_major^^)
     endif()
+
+    target_include_directories(${app_target} PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR})
     
     set_target_properties(${app_target} PROPERTIES
         OUTPUT_NAME ${jplug_name}

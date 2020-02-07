@@ -17,7 +17,7 @@ my $d_in_modules;
 my $d_out;
 
 my $combine_script = catfile $FindBin::RealBin, 'combine_source.pl';
-my @plugin_source_paths = qw[juce_audio_plugin_client];
+my @plugin_modules = qw[juce_audio_plugin_client];
 
 GetOptions(
     'modules=s' => \$d_in_modules,
@@ -105,7 +105,7 @@ foreach my $module (@modules)
     system($^X, $combine_script,
         '-in', $master_hdr_in,
         '-out', $master_hdr_out,
-        '-skip', @plugin_source_paths) == 0
+        '-extra-inc', 'AppConfig.h') == 0
       or die "combining master header failed for module $module";
 
     my $master_src_in;
@@ -126,7 +126,7 @@ foreach my $module (@modules)
         system($^X, $combine_script,
             '-in', $master_src_in,
             '-out', $master_src_out,
-            '-skip', @plugin_source_paths) == 0
+            '-extra-inc', 'AppConfig.h') == 0
           or die "combining master source failed for module $module";
     }
 
@@ -222,6 +222,7 @@ write_ruled_libs($fh_cmake, $juce_lib, 'APPLE AND NOT IOS', [sort keys %osx_libs
 write_ruled_libs($fh_cmake, $juce_lib, 'WIN32', [sort keys %win_libs]);
 write_ruled_libs($fh_cmake, $juce_lib, 'MINGW', [sort keys %mingw_libs]);
 write_ruled_libs($fh_cmake, $juce_lib, 'CMAKE_SYSTEM_NAME STREQUAL "Linux"', [sort keys %linux_libs]);
+write_ruled_libs($fh_cmake, $juce_lib, 'CMAKE_SYSTEM_NAME STREQUAL "Linux" AND JUCE_USE_CURL', [qw/curl/]);
 write_ruled_pkgs($fh_cmake, $juce_lib, 'CMAKE_SYSTEM_NAME STREQUAL "Linux"', [sort keys %linux_pkgs]);
 write_ruled_pkgs($fh_cmake, $juce_lib, 'JUCE_WEB_BROWSER AND CMAKE_SYSTEM_NAME STREQUAL "Linux"', [qw/gtk+-3.0 webkit2gtk-4.0/]);
 
@@ -249,9 +250,30 @@ copy catfile($FindBin::RealBin, 'plugin_gen', 'apple_app.plist.in'), catfile($d_
 copy catfile($FindBin::RealBin, 'plugin_gen', 'apple_au.plist.in'), catfile($d_plugin_code, 'apple_au.plist.in');
 copy catfile($FindBin::RealBin, 'plugin_gen', 'PluginConfig.h.in'), catfile($d_plugin_code, 'PluginConfig.h.in');
 
-foreach my $spec_dir (@plugin_source_paths)
+# process plugin code
+foreach my $spec_module (@plugin_modules)
 {
-    dircopy(catdir($d_in_modules, $spec_dir), catdir($d_plugin_code, $spec_dir));
+    my $spec_dir_in = catdir $d_in_modules, $spec_module;
+    my $spec_dir_out = catdir $d_plugin_code, $spec_module;
+    
+    opendir my $dh, $spec_dir_in or die "failed to open directory $spec_dir_in: $!";
+    my @fnames = sort 
+        grep {/\.c|\.c++|\.cpp|\.cxx|\.h|\.hpp/i}
+        grep {$_ ne '.' and $_ ne '..'} readdir $dh;
+    close $dh;
+    
+    mkpath $spec_dir_out if !-d $spec_dir_out;
+    foreach my $fname (@fnames)
+    {
+        my $src_in = catfile($spec_dir_in, $fname);
+        my $src_out = catfile($spec_dir_out, $fname);
+        system($^X, $combine_script,
+            '-in', $src_in,
+            '-out', $src_out,
+            '-skip', "${spec_module}.h",
+            '-extra-inc', 'AppConfig.h', 'PluginConfig.h') == 0
+          or die "combine script failed";
+    }
 }
 
 # create plugin test
