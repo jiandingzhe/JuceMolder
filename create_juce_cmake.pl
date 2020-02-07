@@ -7,7 +7,7 @@ use Cwd qw/abs_path/;
 use File::Glob qw/bsd_glob/;
 use File::Basename;
 use File::Copy qw/copy/;
-use File::Copy::Recursive;
+use File::Copy::Recursive qw/dircopy/;
 use File::Spec::Functions qw/catfile catdir abs2rel/;
 use File::Spec::Unix;
 use File::Path;
@@ -17,7 +17,7 @@ my $d_in_modules;
 my $d_out;
 
 my $combine_script = catfile $FindBin::RealBin, 'combine_source.pl';
-my @plugin_source_paths = qw[juce_audio_plugin_client juce_audio_processors/format_types];
+my @plugin_source_paths = qw[juce_audio_plugin_client];
 
 GetOptions(
     'modules=s' => \$d_in_modules,
@@ -159,8 +159,11 @@ foreach my $config_key (sort keys %config_opts)
         s/\$/\\\$/g;
     }
     my $doc = join '\n', @$doc_lines;
+    my $config_interface_key = $config_key;
+    $config_interface_key =~ s/^JUCE_/JUCE${ver_major}_/ or die "failed to parse config key $config_key";
     print $fh_cmake <<HEREDOC;
-set($config_key "$config_opts{$config_key}" CACHE BOOL "$doc")
+set($config_interface_key "$config_opts{$config_key}" CACHE BOOL "$doc")
+set($config_key \$\{$config_interface_key\})
 HEREDOC
 }
 
@@ -217,6 +220,7 @@ write_ruled_frameworks($fh_cmake, $juce_lib, 'APPLE AND NOT IOS', [sort keys %os
 write_ruled_libs($fh_cmake, $juce_lib, 'IOS', [sort keys %ios_libs]);
 write_ruled_libs($fh_cmake, $juce_lib, 'APPLE AND NOT IOS', [sort keys %osx_libs]);
 write_ruled_libs($fh_cmake, $juce_lib, 'WIN32', [sort keys %win_libs]);
+write_ruled_libs($fh_cmake, $juce_lib, 'MINGW', [sort keys %mingw_libs]);
 write_ruled_libs($fh_cmake, $juce_lib, 'CMAKE_SYSTEM_NAME STREQUAL "Linux"', [sort keys %linux_libs]);
 write_ruled_pkgs($fh_cmake, $juce_lib, 'CMAKE_SYSTEM_NAME STREQUAL "Linux"', [sort keys %linux_pkgs]);
 write_ruled_pkgs($fh_cmake, $juce_lib, 'JUCE_WEB_BROWSER AND CMAKE_SYSTEM_NAME STREQUAL "Linux"', [qw/gtk+-3.0 webkit2gtk-4.0/]);
@@ -230,8 +234,43 @@ target_include_directories($juce_lib PRIVATE
 HEREDOC
 }
 
-# finalize
+# process plugin generator CMake code
+my $d_plugin_code = catdir $d_out, 'plugin_code';
+mkpath $d_plugin_code if !-d $d_plugin_code;
 
+my $repl_vars = {
+    ver_major => $ver_major,
+    ver_minor => $ver_minor,
+    ver_patch => $ver_patch
+};
+process_plugin_cmake($fh_cmake, $repl_vars);
+
+copy catfile($FindBin::RealBin, 'plugin_gen', 'apple_app.plist.in'), catfile($d_plugin_code, 'apple_app.plist.in');
+copy catfile($FindBin::RealBin, 'plugin_gen', 'apple_au.plist.in'), catfile($d_plugin_code, 'apple_au.plist.in');
+copy catfile($FindBin::RealBin, 'plugin_gen', 'PluginConfig.h.in'), catfile($d_plugin_code, 'PluginConfig.h.in');
+
+foreach my $spec_dir (@plugin_source_paths)
+{
+    dircopy(catdir($d_in_modules, $spec_dir), catdir($d_plugin_code, $spec_dir));
+}
+
+# create plugin test
+my $d_plugin = catdir $d_out, 'test_plugin';
+mkpath $d_plugin if !-d $d_plugin;
+print $fh_cmake <<HEREDOC;
+add_subdirectory(test_plugin)
+HEREDOC
+
+open my $fh_plugin_cmake, '>', catfile($d_plugin, 'CMakeLists.txt') or die "failed to open plugin cmake: $!";
+process_template(catfile($FindBin::RealBin, 'plugin_gen', 'plugin_test.cmake'), $fh_plugin_cmake, $repl_vars);
+close $fh_plugin_cmake;
+
+foreach my $fname (qw/TestPluginUI.h TestPluginUI.cpp TestPluginProcessor.h TestPluginProcessor.cpp/)
+{
+    copy catfile($FindBin::RealBin, 'plugin_gen', $fname), catfile($d_plugin, $fname) or die "failed to copy $fname to test plugin dir";
+}
+
+# finalize
 close $fh_cmake;
 
 #
@@ -404,17 +443,21 @@ sub parse_decl_line
 sub write_ruled_libs
 {
     my ($fh_out, $lib_name, $rule, $libs) = @_;
+    return if @$libs == 0;
+
     my $libs_line = join ' ', @$libs;
     print $fh_out <<HEREDOC;
 if($rule)
     target_link_libraries($lib_name $libs_line)
 endif()
+
 HEREDOC
 }
 
 sub write_ruled_frameworks
 {
     my ($fh_out, $lib_name, $rule, $frameworks) = @_;
+    return if @$frameworks == 0;
 
     print $fh_out <<HEREDOC;
 if($rule)
@@ -433,12 +476,15 @@ HEREDOC
     print $fh_out <<HEREDOC;
     target_link_libraries($lib_name $flib_str)
 endif()
+
 HEREDOC
 }
 
 sub write_ruled_pkgs
 {
     my ($fh_out, $lib_name, $rule, $pkgs) = @_;
+    return if @$pkgs == 0;
+
     print $fh_out <<HEREDOC;
 if($rule)
     find_package(PkgConfig REQUIRED)
@@ -457,6 +503,7 @@ HEREDOC
 
     print $fh_out <<HEREDOC;
 endif()
+
 HEREDOC
 }
 
@@ -483,4 +530,35 @@ HEREDOC
     say $fh '';
     
     close $fh;
+}
+
+sub process_plugin_cmake
+{
+    my ($fh_out, $replace_vars) = @_;
+
+    print $fh_out <<HEREDOC;
+#
+# plugin generation utilities
+#
+HEREDOC
+    my $file_in = catfile $FindBin::RealBin, 'plugin_gen', "JucePlugin.cmake";
+    process_template($file_in, $fh_out, $replace_vars);
+}
+
+sub process_template
+{
+    my ($file_in, $fh_out, $vars) = @_;
+    open my $fh_in, '<', $file_in or die "failed to open input template $file_in: $!";
+    while (my $line = <$fh_in>)
+    {
+        while ($line =~ /\^\^(\w+?)\^\^/)
+        {
+            my $var_name = $1;
+            die "var $var_name in line not defined:\n$line" if !exists $vars->{$var_name};
+            my $value = $vars->{$var_name};
+            $line =~ s/\^\^${var_name}\^\^/$value/ or die "failed to replace $var_name in line:\n$line";
+        }
+        print $fh_out $line;
+    }
+    close $fh_in;
 }

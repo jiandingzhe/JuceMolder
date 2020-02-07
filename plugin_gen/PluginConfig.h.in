@@ -1,0 +1,51 @@
+#pragma once
+
+#cmakedefine01 JucePlugin_Build_VST
+#cmakedefine01 JucePlugin_Build_VST3
+#cmakedefine01 JucePlugin_Build_AU
+#cmakedefine01 JucePlugin_Build_AUv3
+#define JucePlugin_Build_RTAS 0
+#cmakedefine01 JucePlugin_Build_AAX
+#define JucePlugin_Build_Standalone 1
+#cmakedefine01 JucePlugin_Build_Unity
+#cmakedefine01 JucePlugin_Enable_IAA
+
+#define JucePlugin_Name "@jplug_name@"
+#define JucePlugin_Desc "@jplug_DESC@"
+#define JucePlugin_Manufacturer "@jplug_MANUFACTURER@"
+#define JucePlugin_ManufacturerWebsite "@jplug_MANUFACTURER_WEBSITE@"
+#define JucePlugin_ManufacturerEmail "@jplug_MANUFACTURER_EMAIL@"
+#define JucePlugin_ManufacturerCode '@jplug_MANUFACTURER_CODE@'
+#define JucePlugin_PluginCode '@jplug_CODE@'
+#cmakedefine01 JucePlugin_IsSynth
+#cmakedefine01 JucePlugin_WantsMidiInput
+#cmakedefine01 JucePlugin_ProducesMidiOutput
+#cmakedefine01 JucePlugin_IsMidiEffect
+#cmakedefine01 JucePlugin_EditorRequiresKeyboardFocus
+#define JucePlugin_Version @jplug_VER_MAJOR@.@jplug_VER_MINOR@.@jplug_VER_PATCH@
+#define JucePlugin_VersionCode @jplug_version_code@
+#define JucePlugin_VersionString "@jplug_VER_MAJOR@.@jplug_VER_MINOR@.@jplug_VER_PATCH@"
+
+#define JucePlugin_VSTUniqueID JucePlugin_PluginCode
+#define JucePlugin_VSTCategory @jplug_vst_category@
+#define JucePlugin_Vst3Category "@jplug_vst3_category@"
+
+#define JucePlugin_AUMainType '@jplug_au_main_type@'
+#define JucePlugin_AUSubType JucePlugin_PluginCode
+#define JucePlugin_AUExportPrefix @jplug_AU_EXPORT_PREFIX@
+#define JucePlugin_AUExportPrefixQuoted "@jplug_AU_EXPORT_PREFIX@"
+#define JucePlugin_AUManufacturerCode JucePlugin_ManufacturerCode
+#define JucePlugin_CFBundleIdentifier @jplug_BUNDLE_IDENTIFIER@
+
+#define JucePlugin_AAXIdentifier @jplug_BUNDLE_IDENTIFIER@
+#define JucePlugin_AAXManufacturerCode JucePlugin_ManufacturerCode
+#define JucePlugin_AAXProductId JucePlugin_PluginCode
+#define JucePlugin_AAXCategory @jplug_aax_category@
+#define JucePlugin_AAXDisableBypass @jplug_aax_disable_bypass@
+#define JucePlugin_AAXDisableMultiMono @jplug_aax_disable_multi_mono@
+
+#define JucePlugin_IAAType '@jplug_iaa_type@'
+#define JucePlugin_IAASubType JucePlugin_PluginCode
+#define JucePlugin_IAAName "@jplug_manufacturer@: @jplug_name@"
+#define JucePlugin_VSTNumMidiInputs @jplug_vst_num_midi_inputs@
+#define JucePlugin_VSTNumMidiOutputs @jplug_vst_num_midi_outputs@

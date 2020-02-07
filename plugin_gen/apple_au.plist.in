@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>AudioComponents</key>
+    <array>
+      <dict>
+        <key>name</key>
+        <string>${BUNDLE_AU_MANUFACTURER}: ${BUNDLE_AU_NAME}</string>
+        <key>description</key>
+        <string>${BUNDLE_AU_DESC}</string>
+        <key>factoryFunction</key>
+        <string>${BUNDLE_AU_EXPORT_PREFIX}Factory</string>
+        <key>manufacturer</key>
+        <string>${BUNDLE_AU_MANUFACTURER_CODE}</string>
+        <key>type</key>
+        <string>aumu</string>
+        <key>subtype</key>
+        <string>${BUNDLE_AU_PLUGIN_CODE}</string>
+        <key>version</key>
+        <integer>${BUNDLE_AU_VERSION_CODE}</integer>
+      </dict>
+    </array>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>English</string>
+    <key>CFBundleExecutable</key>
+    <string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+    <key>CFBundleGetInfoString</key>
+    <string>${MACOSX_BUNDLE_INFO_STRING}</string>
+    <key>CFBundleIdentifier</key>
+    <string>${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleLongVersionString</key>
+    <string>${MACOSX_BUNDLE_LONG_VERSION_STRING}</string>
+    <key>CFBundleName</key>
+    <string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
+    <key>CFBundlePackageType</key>
+    <string>BNDL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleVersion</key>
+    <string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
+    <key>CSResourcesFileMapped</key>
+    <true/>
+    <key>LSRequiresCarbon</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>${MACOSX_BUNDLE_COPYRIGHT}</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
