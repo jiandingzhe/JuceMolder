@@ -175,6 +175,7 @@ HEREDOC
 write_config_header_template();
 
 # create library
+s/\\/\//g foreach @common_src, @apple_src, @non_apple_src;
 my $juce_lib = "juce$ver_major";
 
 my $avail_flags = join "\n    ", map {"JUCE_MODULE_AVAILABLE_$_"} @modules;
