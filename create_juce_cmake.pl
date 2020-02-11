@@ -8,7 +8,7 @@ use File::Glob qw/bsd_glob/;
 use File::Basename;
 use File::Copy qw/copy/;
 use File::Copy::Recursive qw/dircopy/;
-use File::Spec::Functions qw/catfile catdir abs2rel/;
+use File::Spec::Functions qw/catfile catdir abs2rel rel2abs/;
 use File::Spec::Unix;
 use File::Path;
 use Getopt::Long;
@@ -42,7 +42,7 @@ HELPDOC
 die "input modules directory \"$d_in_modules\" not exist" if !-d $d_in_modules;
 die "output directory is not specified" if !defined $d_out;
 
-$d_out = abs_path($d_out);
+$d_out = rel2abs($d_out);
 
 # obtain all modules
 opendir my $dh_in_modules, $d_in_modules or die "failed to open input modules dir $d_in_modules: $!";
