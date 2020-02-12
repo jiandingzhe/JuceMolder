@@ -260,23 +260,28 @@ foreach my $spec_module (@plugin_modules)
     my $spec_dir_in = catdir $d_in_modules, $spec_module;
     my $spec_dir_out = catdir $d_plugin_code, $spec_module;
     
+    # amalgamate C++ files
     opendir my $dh, $spec_dir_in or die "failed to open directory $spec_dir_in: $!";
-    my @fnames = sort 
-        grep {/\.c|\.c++|\.cpp|\.cxx|\.h|\.hpp/i}
-        grep {$_ ne '.' and $_ ne '..'} readdir $dh;
+    my @all_names = sort grep {$_ ne '.' and $_ ne '..'} readdir $dh;
+    my @fnames = grep {/(\.c|\.c++|\.cpp|\.cxx|\.h|\.hpp|\.m|\.mm|\.r)$/i} @all_names;
     close $dh;
     
     mkpath $spec_dir_out if !-d $spec_dir_out;
     my @plugin_inputs  = map {catfile $spec_dir_in, $_} @fnames;
     my @plugin_outputs = map {catfile $spec_dir_out, $_} @fnames;
     system($^X, $combine_script,
-            '-in', @plugin_inputs,
-            '-out', @plugin_outputs,
-            '-skip', "${spec_module}.h",
-            '-inc-dir', $d_in_modules,
-            '-extra-inc-files', 'AppConfig.h', 'PluginConfig.h') == 0
-          or die "combine script failed";
+        '-in', @plugin_inputs,
+        '-out', @plugin_outputs,
+        '-skip', "${spec_module}.h", (map {"$_.h"} @modules),
+        '-inc-dir', $d_in_modules,
+        '-extra-inc-files', 'AppConfig.h', 'PluginConfig.h') == 0
+      or die "combine script failed";
 }
+
+mkpath catdir($d_out, 'plugin_code', 'sdk_vst2');
+mkpath catdir($d_out, 'plugin_code', 'sdk_vst3');
+mkpath catdir($d_out, 'plugin_code', 'sdk_aax');
+mkpath catdir($d_out, 'plugin_code', 'sdk_core_audio');
 
 # create plugin test
 my $d_plugin = catdir $d_out, 'test_plugin';

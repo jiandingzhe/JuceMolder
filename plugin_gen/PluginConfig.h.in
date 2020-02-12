@@ -41,8 +41,8 @@
 #define JucePlugin_AAXManufacturerCode JucePlugin_ManufacturerCode
 #define JucePlugin_AAXProductId JucePlugin_PluginCode
 #define JucePlugin_AAXCategory @jplug_aax_category@
-#define JucePlugin_AAXDisableBypass @jplug_aax_disable_bypass@
-#define JucePlugin_AAXDisableMultiMono @jplug_aax_disable_multi_mono@
+#cmakedefine01 JucePlugin_AAXDisableBypass
+#cmakedefine01 JucePlugin_AAXDisableMultiMono
 
 #define JucePlugin_IAAType '@jplug_iaa_type@'
 #define JucePlugin_IAASubType JucePlugin_PluginCode
