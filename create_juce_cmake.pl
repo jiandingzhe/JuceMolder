@@ -91,6 +91,9 @@ my @common_src;
 my @apple_src;
 my @non_apple_src;
 
+my @all_src_in;
+my @all_src_out;
+
 foreach my $module (@modules)
 {
     say "write CMake for $module";
@@ -101,12 +104,8 @@ foreach my $module (@modules)
     # merge master source files
     my $master_hdr_in  = catfile $d_in_module, "$module.h";
     my $master_hdr_out = catfile $d_out_module, "$module.h";
-
-    system($^X, $combine_script,
-        '-in', $master_hdr_in,
-        '-out', $master_hdr_out,
-        '-extra-inc', 'AppConfig.h') == 0
-      or die "combining master header failed for module $module";
+    push @all_src_in, $master_hdr_in;
+    push @all_src_out, $master_hdr_out;
 
     my $master_src_in;
     foreach my $ext (qw/cpp cxx c++/)
@@ -123,11 +122,8 @@ foreach my $module (@modules)
     if (defined $master_src_in)
     {
         $master_src_out = catfile $d_out_module, "$module.cpp";
-        system($^X, $combine_script,
-            '-in', $master_src_in,
-            '-out', $master_src_out,
-            '-extra-inc', 'AppConfig.h') == 0
-          or die "combining master source failed for module $module";
+        push @all_src_in, $master_src_in;
+        push @all_src_out, $master_src_out;
     }
 
     # copy objective-c++ source file
@@ -145,6 +141,13 @@ foreach my $module (@modules)
         push @common_src, abs2rel($master_src_out, $d_out) if defined $master_src_out;
     }
 }
+
+system($^X, $combine_script,
+    '-in', @all_src_in,
+    '-out', @all_src_out,
+    '-inc-dir', $d_in_modules,
+    '-extra-inc-files', 'AppConfig.h') == 0
+  or die "combining master sources failed";
 
 # generate config header
 foreach my $config_key (sort keys %config_opts)
@@ -264,17 +267,15 @@ foreach my $spec_module (@plugin_modules)
     close $dh;
     
     mkpath $spec_dir_out if !-d $spec_dir_out;
-    foreach my $fname (@fnames)
-    {
-        my $src_in = catfile($spec_dir_in, $fname);
-        my $src_out = catfile($spec_dir_out, $fname);
-        system($^X, $combine_script,
-            '-in', $src_in,
-            '-out', $src_out,
+    my @plugin_inputs  = map {catfile $spec_dir_in, $_} @fnames;
+    my @plugin_outputs = map {catfile $spec_dir_out, $_} @fnames;
+    system($^X, $combine_script,
+            '-in', @plugin_inputs,
+            '-out', @plugin_outputs,
             '-skip', "${spec_module}.h",
-            '-extra-inc', 'AppConfig.h', 'PluginConfig.h') == 0
+            '-inc-dir', $d_in_modules,
+            '-extra-inc-files', 'AppConfig.h', 'PluginConfig.h') == 0
           or die "combine script failed";
-    }
 }
 
 # create plugin test
