@@ -18,3 +18,9 @@ juce^^ver_major^^_plugin(Juce^^ver_major^^TestInstrument
     VER_PATCH 3
     SOURCES ${test_source_files}
 )
+
+set_target_properties(
+    Juce^^ver_major^^TestInstrument_app
+    Juce^^ver_major^^TestInstrument_impl
+    Juce^^ver_major^^TestInstrument_plugin
+    PROPERTIES FOLDER JUCE^^ver_major^^)

@@ -171,6 +171,7 @@ foreach my $module (sort keys %config_opts)
         print $fh_cmake <<HEREDOC;
 set($config_interface_key "$config_opts{$module}{$config_key}" CACHE BOOL "$doc")
 set($config_key \$\{$config_interface_key\})
+
 HEREDOC
     }
 }
