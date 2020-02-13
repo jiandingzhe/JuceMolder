@@ -54,7 +54,7 @@ closedir $dh_in_modules;
 
 # parse module properties
 my $ver_str;
-my %config_opts; # key => default value
+my %config_opts; # module => key => default value
 my %config_docs; # key => help doc
 my %priv_inc_dirs; # {dirs}
 my %osx_fwks; # {frameworks}
@@ -150,24 +150,29 @@ system($^X, $combine_script,
   or die "combining master sources failed";
 
 # generate config header
-foreach my $config_key (sort keys %config_opts)
+foreach my $module (sort keys %config_opts)
 {
-    my $doc_lines = $config_docs{$config_key};
-    foreach (@$doc_lines)
+    my $display_module = uc $module;
+    $display_module =~ s/^JUCE_//;
+    foreach my $config_key (sort keys %{$config_opts{$module}})
     {
-        s/\\/\\\\/g;
-        s/"/\\"/g;
-        s/{/\\{/g;
-        s/}/\\}/g;
-        s/\$/\\\$/g;
-    }
-    my $doc = join '\n', @$doc_lines;
-    my $config_interface_key = $config_key;
-    $config_interface_key =~ s/^JUCE_/JUCE${ver_major}_/ or die "failed to parse config key $config_key";
-    print $fh_cmake <<HEREDOC;
-set($config_interface_key "$config_opts{$config_key}" CACHE BOOL "$doc")
+        my $doc_lines = $config_docs{$config_key};
+        foreach (@$doc_lines)
+        {
+            s/\\/\\\\/g;
+            s/"/\\"/g;
+            s/{/\\{/g;
+            s/}/\\}/g;
+            s/\$/\\\$/g;
+        }
+        my $doc = join '\n', @$doc_lines;
+        my $config_interface_key = $config_key;
+        $config_interface_key =~ s/^JUCE_/JUCE${ver_major}_${display_module}_/ or die "failed to parse config key $config_key";
+        print $fh_cmake <<HEREDOC;
+set($config_interface_key "$config_opts{$module}{$config_key}" CACHE BOOL "$doc")
 set($config_key \$\{$config_interface_key\})
 HEREDOC
+    }
 }
 
 print $fh_cmake <<HEREDOC;
@@ -436,7 +441,7 @@ sub read_module_prop
                 {
                     if ($curr_config eq $1)
                     {
-                        $config_opts{$curr_config} = $2;
+                        $config_opts{$module}{$curr_config} = $2;
                         $config_docs{$curr_config} = [@curr_config_help];
                         $curr_config_macro_start = 0;
                         $curr_config = undef;
@@ -550,13 +555,16 @@ sub write_config_header_template
 
 HEREDOC
 
-    foreach my $config (sort keys %config_opts)
+    foreach my $module (sort keys %config_opts)
     {
-        print $fh <<HEREDOC;
+        foreach my $config (sort keys %{$config_opts{$module}})
+        {
+            print $fh <<HEREDOC;
 #cmakedefine01 $config
 HEREDOC
+        }
+        say $fh '';
     }
-    say $fh '';
     
     close $fh;
 }
